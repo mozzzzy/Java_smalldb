@@ -8,7 +8,7 @@ import java.io.FileReader;
 import java.io.BufferedReader;
 
 /*
-ファイル編集用クラス
+編集するファイルのクラス
 */
 public class FileEdit{
 

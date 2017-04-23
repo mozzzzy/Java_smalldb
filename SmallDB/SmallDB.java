@@ -6,135 +6,156 @@ import java.io.IOException;
 import java.io.FileReader;
 import java.io.BufferedReader;
 
-//import FileEdit.FileEdit;
-import SmallDB.FileEdit.FileEdit;
+import SmallDB.EditedFile.EditedFile;
 
 /*
-内製DB クラス
-*/
+ * SmallDB version 2.0
+ */
+
+
+
+
 public class SmallDB{
 
 	//クラス変数
-	String dbname = "";	//DB名
-	int columnSize = 0;	//カラム数
-
+	String dbfilepath;	//DB名 == DBのファイルパス
+	int columnSize;		//カラム数
 
 
 	//コンストラクタ (カラム無指定の場合)
-	public SmallDB(String dbname){
+	public SmallDB(String dbfilepath){
 		//db名を記憶
-		this.dbname = dbname;
+		this.dbfilepath = dbfilepath;
 
+		/*dbの存在確認*/
 		//dbの実体になるFileの生成
-		File dbfile = new File(dbname);
+		File dbfile = new File(dbfilepath);
 
 		//もし既にDB(の実体となるファイル)があったら
 		if (dbfile.exists()){
-			System.out.println("[SmallDB.SmallDB] DB \""+dbname+"\" is already exist.");	//メッセージを出力
 			this.columnSize = GetColumnNum();	//カラム数を取得
 
 		//DB(の実体となるファイル)がなかったら
 		}else{
 			this.columnSize = 0;	//カラム数は0
-			CreateDB(dbname);	//DBを作成
+			CreateDB(dbfilepath);	//DBを作成
 		}
 	}
 
 
 
-	//DBの作成
-	public void CreateDB(String dbname){
-		System.out.println("[SmallDB.CreateDB] Create new Database \""+dbname+"\".");
-		File dbfile = new File(dbname);
-		try{
-			FileWriter filewriter = new FileWriter(dbfile);
-			filewriter.write("DB:"+dbname+"\n");	//DB:Database名 を書き込み
-			filewriter.close();
-		}catch(IOException e){
-			System.out.println("[SmallDB.CreateDB] Error. Can't create new Database \""+dbname+"\".");
-		}
+	//DBの作成 (コンストラクタが動いたら内部でこいつが呼ばれるので、こいつを単独で使うことはなさそう。DBの存在確認もコンストラクタやっているので安心)
+	void CreateDB(String dbfilepath){
+
+		//EditedFileでdbfileを新規作成
+		EditedFile dbfile = new EditedFile(dbfilepath);
+		//DB名( = filepath)を0行目に入れておく
+		dbfile.InsertLine(0,"DB:"+dbfilepath);
 	}
 
 
 
 	//カラムの追加
-	public void AddColumns(String[] Columns){
+	//	成功したら0
+	//	失敗したら-1
+	public int AddColumns(String[] Columns, int[] ColumnStats, String notNullDefault){
 
-		//ご挨拶する
-		System.out.print("[SmallDB.AddColumns] Add column ");		//Add column "a" "b" "c" to "dbname".\n
-		for(int cc=0;cc<Columns.length;cc++){				//
-			System.out.print("\""+Columns[cc]+"\" ");		//
-		}								//
-		System.out.print("to \""+this.dbname+"\".");			//
-		System.out.print("\n");						//
+		//新しく登録するカラムの中に重複がないかをチェック
+		for(int cc=0; cc < Columns.length; cc++){
+			for(int cc2=0; cc2 < cc; cc2++){
+				if(cc!=cc2 && Columns[cc].matches(Columns[cc2])){
+					return -1;
+				}
+			}
+		}
 
 
+		/*ここからカラムの追加*/
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
 
-
-		File dbfile = new File(this.dbname);
 		//もしカラムが何もなかったら
-		if(this.columnSize==0){
-			try{
-				FileWriter filewriter = new FileWriter(dbfile,true);
+		if(this.columnSize <= 0){
 
-				//カラム行の文字列を生成
-				String ColumnLine = "Columns:";					//Columns:a,b,c\n  の文字列を作成
-				for(int cc=0;cc<Columns.length;cc++){				//
-					ColumnLine += Columns[cc] + ",";			//
-				}								//
-				ColumnLine = ColumnLine.substring(0, ColumnLine.length()-1);	//
-				ColumnLine += "\n";						//
+			//カラムの文字列を作成
+			String ColumnLine = "Columns:";					// "Columns:a,b,c"
+			for(int cc=0;cc<Columns.length;cc++){				//
+				ColumnLine += Columns[cc] + ",";			//
+			}								//
+			ColumnLine = ColumnLine.substring(0, ColumnLine.length()-1);	// <- 最後の","を削る
+			//dbへの書き込み
+			dbfile.InsertLine(1,ColumnLine);
+
+			//カラム毎のNullを許すかどうかの情報を示す文字列の作成
+			String ColumnStatLine = "AllowNull:";							// "AllowNull:1,0,0"
+			for(int cc=0;cc<ColumnStats.length;cc++){						//
+				ColumnStatLine += String.valueOf(ColumnStats[cc]) + ",";			//
+			}											//
+			ColumnStatLine = ColumnStatLine.substring(0, ColumnStatLine.length()-1);		// <- 最後の","を削る
+			//dbへの書き込み
+			dbfile.InsertLine(2,ColumnStatLine);
 
 
-				//カラム数をクラス変数に再登録
-				this.columnSize += Columns.length;				//カラム数を更新
-
-				//DB(の実体であるファイル)に書き込み
-				filewriter.write(ColumnLine);					//書き込み
-				filewriter.close();
-
-			}catch(IOException e){
-				System.out.println("[SmallDB.AddCoumuns] Can't add columns to Database \""+dbname+"\".");
+		//もしカラムがすでに何かしらあったら(Recodeも何か入っているかも)
+		}else{
+			//元からあるColumnと新しく追加するColumnとの間で重複がないかをチェック
+			String[] OldColumns = GetColumns();
+			for(int cc=0; cc< Columns.length; cc++){
+				for(int occ=0; occ<OldColumns.length; occ++){
+					if(Columns[cc].matches(OldColumns[occ])){
+						return -1;
+					}
+				}
 			}
 
 
-		//もし何か既にカラムがあったら
-		}else{
-			//dbfileを編集するためのオブジェクト
-			FileEdit editfile = new FileEdit(this.dbname);
+			//カラムラインのStringを取得
+			String ColumnLine = dbfile.GetMatchLine(1);
 
-			//"Columns:"の行番号を取得
-			int ColumnLineNum[] = editfile.SearchLine("Columns:");
-			if(ColumnLineNum.length==1){
-				//columnを取得
-				String[] columns = GetColumns();
+			//取得したカラムラインの最後に、新しいカラムを追加
+			for(int cc=0;cc<Columns.length;cc++){
+				ColumnLine += "," + Columns[cc];
+			}
+			//dbのColumn行を更新
+			dbfile.UpdateLine(1,ColumnLine);
 
-				//"Columns:"の行をStringで取得
-				String ColumnLine = editfile.GetLine(ColumnLineNum[0]);
-				for(int cc=0;cc<Columns.length;cc++){				//
 
-					//ユニークかどうかのチェック
-					int flag_unique = 0;
-					for(int cc2=0;cc2<columns.length;cc2++){
-						if(columns[cc2].matches(Columns[cc])){
-							flag_unique = 1;
-						}
+			//カラムStatラインのStringを取得
+			String ColumnStatLine = dbfile.GetMatchLine(2);
+			//取得したカラムStatに新しいStatを追加
+			for(int cc=0;cc<ColumnStats.length;cc++){
+				ColumnStatLine += "," + String.valueOf(ColumnStats[cc]);
+			}
+			//dbのカラムStatの行を更新
+			dbfile.UpdateLine(2,ColumnStatLine);
+
+
+			/*ここから各レコードの更新*/
+			//Recode数の取得
+			int recodeNum = GetRecodeNum();
+			for(int rc=0; rc<recodeNum; rc++){
+				//各recodeの取得
+				String eachRecode = dbfile.GetMatchLine(rc+3);
+				//各新しいカラムについて
+				for(int ncc=0;ncc<ColumnStats.length;ncc++){
+					//もしnullが許されないなら
+					if(ColumnStats[ncc] == 0){
+						eachRecode += "," + notNullDefault;
+
+					//もしnullが許されたら
+					}else if(ColumnStats[ncc] == 1){
+						eachRecode += ",";
 					}
-					if(flag_unique==0){
-						ColumnLine = ColumnLine + "," + Columns[cc];
-					}else{
-						System.out.println("[SmallDB.AddColumns]Additional Column \""+Columns[cc]+"\" not unique.");
-					}
-
 				}
-				
-
-				editfile.UpdateLine(ColumnLineNum[0],ColumnLine);
+				//更新
+				dbfile.UpdateLine(rc+3,eachRecode);
 			}
 
 		}
 
+		//カラム数の更新
 		this.columnSize = GetColumnNum();
+
+		return 0;
 	}
 
 
@@ -142,159 +163,168 @@ public class SmallDB{
 	//カラム数を取得
 	public int GetColumnNum(){
 
-		try{
-			//カラム行を探す
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-			//一行ずつ読み込む
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.startsWith("Columns:")){
-					String values = oneline.split(":")[1];
-					String[] eachColumn = oneline.split(",");
-					this.columnSize = eachColumn.length;
-				}
-			}
-			br.close();
-		}catch(IOException e){
-			System.out.println("[SmallDB.GetColumnNum] Error. IOException.");
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		//カラム行のStringを取得
+		String ColumnLine = dbfile.GetMatchLine(1);
+		//"Columns:"から始まっているはずなので、これを分離。String[]の0には""が、1には"a,b,c"のようなカラムだけが入っているはず
+		String[] sepaHead = ColumnLine.split("Columns:",0);
+		//もし上記の2つに分かれていなかったら何かおかしいので-1を返す
+		if(sepaHead.length != 2){
+			return -1;
 		}
+		//"a,b,c"を","でsplitして、eachColumn配列に入れる
+		String[] eachColumn = sepaHead[1].split(",",0);
+		//eachColumn配列のサイズ = カラム数担っているはず
+		this.columnSize = eachColumn.length;
 
 		return this.columnSize;
+
 	}
 
 
 	//カラムを取得する
+	//	成功したらString[] で全カラムを
+	//	失敗したらnull
 	public String[] GetColumns(){
 
-		String[] Columns = new String[GetColumnNum()];
-
-		try{
-			//カラム行を探す
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-			//一行ずつ読み込む
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.startsWith("Columns:")){
-					String values = oneline.split(":")[1];
-					Columns = values.split(",");
-				}
-			}
-			br.close();
-		}catch(IOException e){
-			System.out.println("[SmallDB.GetColumns] Error. IOException.");
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		//カラム行のStringを取得
+		String ColumnLine = dbfile.GetMatchLine(1);
+		//"Columns:"から始まっているはずなので、これを分離。String[]の0には""が、1には"a,b,c"のようなカラムだけが入っているはず
+		String[] sepaHead = ColumnLine.split("Columns:",0);
+		//もし上記の2つに分かれていなかったら何かおかしいのでnullを返す
+		if(sepaHead.length != 2){
+			return null;
 		}
+		//"a,b,c"を","でsplitして、eachColumn配列に入れる
+		String[] eachColumn = sepaHead[1].split(",",0);
 
-		return Columns;
+		return eachColumn;
 	}
 
 
-	//各カラムのIDを取得
+	//各カラムのIDを取得 (上のGetColumnsを利用)
 	public int GetColumnID(String Column){
-	
 		int ColumnID = -1;
+		//カラムをString[]で取得
 		String[] Columns = GetColumns();
+		//各カラムについて
 		for(int cc=0;cc<Columns.length;cc++){
+			//もし該当するカラムがあったら
 			if(Columns[cc].matches(Column)){
+				//カラムIDを記憶
 				ColumnID = cc;
 			}
 		}
 
-		if(ColumnID == -1){
-			System.out.println("[SmallDB.GetColumnID] Column \""+Column+"\" not exist.");
-		}
-
-		return ColumnID;	
+		return ColumnID;
 	}
 
 
-	//DB名を取得
+	//DB名を返す (コンストラクタがもう取ってきているので、返すだけで良い)
+	//	コンストラクタがうまく動けば失敗はしないはず。成功したらStringを返す
 	public String GetDBName(){
-		return dbname;
+		return this.dbfilepath;
 	}
-
-
 
 
 	//DBファイルの行数を取得
+	//	成功したらintでDB fileの行数(0~)を返す
+	//	失敗したら -1を返す
 	public int GetDBSize(){
-		
-		int lc = 0;	//line counter
-		try{
-			//読み込み用BufferReader
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-			//一行ずつ読み込む
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				lc++;
-			}
-			br.close();
-		}catch(IOException e){
-			System.out.println("[SmallDB.GetDBSize] GetDBSize: Error. IOException.");
-		}
 
-		return lc;
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		return dbfile.SearchAllLineNum();
 
 	}
+
 
 
 	//レコード数を取得
+	//	成功したらint でレコード数を返す
+	//	失敗してもint でなんか返ってくる。おかしいことが起こったら調査することにする。
 	public int GetRecodeNum(){
-		
-		int lc = 0;	//line counter
-		try{
-			//読み込み用BufferReader
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-			//一行ずつ読み込む
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-					lc++;
-				}
+
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		int RecodeNum = 0;
+
+		//dbfileの各行について
+		for(int lc=0; lc<GetDBSize(); lc++){
+			//各行を取得
+			String eachLine = dbfile.GetMatchLine(lc);
+			if(eachLine.matches("DB:.*")==false && eachLine.matches("Columns:.*")==false && eachLine.matches("AllowNull:.*")==false){
+				RecodeNum ++;
 			}
-			br.close();
-		}catch(IOException e){
-			System.out.println("[SmallDB.GetDBSize] GetDBSize: Error. IOException.");
+
 		}
 
-		return lc;
+		return RecodeNum;
+	}
+
+
+	//カラムがnullを許すのかをチェックする
+	//	true / false を返す
+	public boolean checkAllowNull(int ColumnID){
+
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		String columnStatLine = dbfile.GetMatchLine(2);
+		String[] sepaHead = columnStatLine.split("AllowNull:",0);
+		String[] eachStat = sepaHead[1].split(",",0);
+		if(eachStat[ColumnID].matches("1")){
+			return true;
+		}
+		return false;
 
 	}
 
 
 
 
+	//データを挿入 (一番最後に)
+	//	成功したら0
+	//	失敗したら-1
+	public int Insert(String[] data){
 
-	//データを挿入
-	public void Insert(String[] data){
-
+		//カラム数を取得
 		int ColumnNum = GetColumnNum();
-		//System.out.println("##ColumnNum : "+ColumnNum);
+
+		//カラム数と新しいdataの数が合っていたら
 		if(ColumnNum == data.length){
 
-
+			//String[] data を 1つのStringに変換
 			String DataLine = "";
 			for(int dc=0;dc<data.length;dc++){
+				//DBのマネジメント用の文字を含んでいたら失敗させる
+				if(data[dc].matches(".*,.*")==true || data[dc].matches(".*DB:.*")==true || data[dc].matches(".*Columns:.*")==true || data[dc].matches(".AllowNull:.*")==true){
+					return -1;
+				}
+				//nullを許さないところに""を入れようとしたら失敗させる
+				if(checkAllowNull(dc)==false && data[dc].matches("")){
+					return -1;
+				}
+
 				DataLine += data[dc]+",";
 			}
-
+			//最後の","を削る
 			DataLine = DataLine.substring(0, DataLine.length()-1);
-			DataLine += "\n";
 
-			File dbfile = new File(dbname);
-			try{
-				FileWriter filewriter = new FileWriter(dbfile,true);
-				filewriter.write(DataLine);
-				filewriter.close();
-			}catch(IOException e){
-				System.out.println("[SmallDB.Insert] Error. Can't Insert new Data.");
-			}
+			//最終行は何行目なのかを取得
+			int finalLineNum = GetDBSize();
+			//最終行にデータを書き込み
+			EditedFile dbfile = new EditedFile(this.dbfilepath);
+			dbfile.InsertLine(finalLineNum, DataLine);
 
+		//カラム数とdata数が合わなかったら失敗させる
 		}else{
-			System.out.println("[SmallDB.Insert] Error. Different (data size <=> column num)");
+			return -1;
 		}
+
+		return 0;
 	}
 
 
+	/*
+	//v2で廃止
 	//データを特定のIDに挿入
 	public void Insert(String[] data, int ID){
 
@@ -321,269 +351,260 @@ public class SmallDB{
 			System.out.println("[SmallDB.Insert] Error. Different (data size <=> column num)");
 		}
 	}
-
+	*/
 
 
 
 
 	//全件取得
+	/*
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+		    .
+		    .
+		    .
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+
+	 */
 	public String[] Select(){
 
-		int DataSize = 0;
-		try{
-			//DB(の実体であるファイル)を全行読み込むためのBuffredReader
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-
-			//データ数を計算
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-					DataSize ++;
-				}
-			}
-			//BufferedReaderをクローズ
-			br.close();
-	
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
+		int RecodeNum = GetRecodeNum();
+		String[] AllRecode = new String[RecodeNum];
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		for(int rc=0; rc<RecodeNum; rc++){
+			AllRecode[rc] = dbfile.GetMatchLine(rc+3);
 		}
 
-		String[] ReturnData = new String[DataSize];
-		try{
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-	
-			//データを取得
-			int dc = 0;
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-					ReturnData[dc] = oneline;
-					dc++;
-				}
-			}
-		
-			br.close();
-
-
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
-
-		}
-		return ReturnData;
+		return AllRecode;
 	}
 
 
 
-	//指定カラムが指定レコードであるデータを取得
-	public String[] Select(String column, String data){
+	//Recode IDを指定してレコードを取得
+	//	成功したらStringでレコードを丸ごと返す
+	//	失敗したらStringで""を返す
+	/*
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
 
-		int check_column = -1;
-		String[] Columns = GetColumns();
-		for(int cc=0;cc<Columns.length;cc++){
-			if(Columns[cc].matches(column)){
-				check_column = cc;
-			}
-		}
-
-		if(check_column == -1){
-			System.out.println("[SmallDB.Select] Column \""+column+"\" not exist.");
-			return null;
-		}
-
-		int DataSize = 0;
-		try{
-			//DB(の実体であるファイル)を全行読み込むためのBuffredReader
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-
-			//データ数を計算
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-
-					String[] eachdata = oneline.split(",");
-					if(eachdata[check_column].matches(data)){
-						DataSize ++;
-					}
-					
-				}
-			}
-			//BufferedReaderをクローズ
-			br.close();
-	
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
-		}
-
-		String[] ReturnData = new String[DataSize];
-		try{
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-	
-			//データ数を計算
-			int dc = 0;
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-
-					String[] eachdata = oneline.split(",");
-					if(eachdata[check_column].matches(data)){
-						ReturnData[dc] = oneline;
-						dc++;
-					}
-					
-				}
-			}
-		
-			br.close();
-
-
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
-
-		}
-		return ReturnData;
-	}
-
-
-	//指定カラムが指定レコードであるデータのIDを取得
-	public int[] SelectID(String column, String data){
-
-		//ご所望のカラムIDを取得
-		int check_column = -1;
-		String[] Columns = GetColumns();
-		for(int cc=0;cc<Columns.length;cc++){
-			if(Columns[cc].matches(column)){
-				check_column = cc;
-			}
-		}
-
-		//もし所望のカラムがなかったら
-		if(check_column == -1){
-			System.out.println("[SmallDB.Select] Column \""+column+"\" not exist.");
-			return null;
-		}
-
-		int DataSize = 0;
-		try{
-			//DB(の実体であるファイル)を全行読み込むためのBuffredReader
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-
-			//データ数を計算
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-
-					String[] eachdata = oneline.split(",");
-					if(eachdata[check_column].matches(data)){
-						DataSize ++;
-					}
-					
-				}
-			}
-			//BufferedReaderをクローズ
-			br.close();
-	
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
-		}
-
-		int[] ReturnData = new int[DataSize];
-		try{
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-	
-			//データを検索
-			int dc = 0;
-			int adc = 0;	//IDを計算するためのカウンタ
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-					adc++;
-					String[] eachdata = oneline.split(",");
-					if(eachdata[check_column].matches(data)){
-						ReturnData[dc] = adc;
-						dc++;
-					}
-					
-				}
-			}
-		
-			br.close();
-
-
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
-
-		}
-		return ReturnData;
-	}
-
-
-
-	//指定したIDのレコードを取得
+	 */
 	public String Select(int RecodeID){
 
-		String ReturnData = "";
-		try{
-			BufferedReader br = new BufferedReader(new FileReader(this.dbname));
-	
-			//データを取得
-			int dc = 0;
-			String oneline;
-			while((oneline = br.readLine()) != null){
-				if(oneline.matches(".*:.*")==false){
-					if(dc==RecodeID){
-						ReturnData = oneline;
-					}
-					dc++;
-				}
-			}
-		
-			br.close();
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		String Recode = dbfile.GetMatchLine(RecodeID+3);
+		return Recode;
+
+	}
 
 
-		}catch(IOException e){
-			System.out.println("[SmallDB.Select] Error. IOException.");
 
-		}
-		return ReturnData;
+	//Recode ID と ColumnID を指定してレコードの中の 指定されたColumnのデータだけを返す
+	//	成功したらStringでデータを返す
+	/*
+		+------+
+		|      |
+		+------+
+	 */
+	public String SelectData(int RecodeID, int ColumnID){
+
+		//指定されたColumnのrecodeを丸々取得
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		String Recode = dbfile.GetMatchLine(RecodeID+3);
+
+		//recode丸々のStringを各カラムごとにパース
+		String[] eachData = Recode.split(",",0);
+		return eachData[ColumnID];
+
 	}
 
 
 
 
+	//指定カラムが指定レコードであるRecodeのIDをint[]で取得
+	//	成功したら int[]
+	//	失敗もしくは該当するものがなかったらしたら null
+	public int[] SelectID(int columnID, String data){
+
+		//Recode数を取得
+		int RecodeNum = GetRecodeNum();
+
+		//全件Recodeを舐める. まずは件数取得
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		int matchRecodeNum = 0;
+		for(int rc=0; rc<RecodeNum; rc++){
+			String eachRecode = dbfile.GetMatchLine(rc+3);
+			String[] eachData = eachRecode.split(",",0);
+			if(eachData[columnID].matches(data)){
+				matchRecodeNum ++;
+			}
+		}
+
+		if(matchRecodeNum != 0){
+			//返り値用のint[]
+			int[] MatchRecodeID = new int[matchRecodeNum];
+
+			//もう一回全件Recodeを舐める こんどはRecodeID取得
+			int mrc = 0;
+			for(int rc=0; rc<RecodeNum; rc++){
+				String eachRecode = dbfile.GetMatchLine(rc+3);
+				String[] eachData = eachRecode.split(",",0);
+				if(eachData[columnID].matches(data)){
+					MatchRecodeID[mrc] = rc;
+					mrc++;
+				}
+			}
+
+			return MatchRecodeID;
+
+		}
+
+		return null;
+	}
+
+
+
+	//指定カラムが指定レコードであるRecodeを丸々String[]で取得
+	//	成功したら String[] でご所望のRecodeを
+	//	失敗したらnull
+	/*
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+
+		+-------+-------+     +-------+
+		|       |       | ... |       |
+		+-------+-------+     +-------+
+
+	 */
+	public String[] Select(int columnID, String data){
+
+		//columnIDがdataであるRecodeのRecodeIDを取得
+		int[] matchRecodeID = SelectID(columnID, data);
+		if(matchRecodeID == null){
+			return null;
+		}
+
+		//上で取得したRecodeIDのRecodeをString[]で取得
+		String[] matchRecode = new String[matchRecodeID.length];
+		for(int mrc=0;mrc<matchRecodeID.length;mrc++){
+			matchRecode[mrc] = Select(matchRecodeID[mrc]);
+		}
+
+		return matchRecode;
+	}
+
+
+	//全件Recodeの、指定したColumnのデータだけ取得
+	//	成功したらString[]で所望のData
+	//	失敗したらnull
+	/*
+		+------+
+		|      |
+		+------+
+		|      |
+		+------+
+		   .
+		   .
+		   .
+		+------+
+		|      |
+		+------+
+
+	 */
+	public String[] SelectData(int columnID){
+		//Recodeの全件数を取得
+		int RecodeNum = GetRecodeNum();
+
+		if(RecodeNum <= 0){
+			return null;
+		}
+
+
+		String[] AllData = new String[RecodeNum];
+
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		for(int rc=0; rc<RecodeNum; rc++){
+			String eachRecode  = dbfile.GetMatchLine(rc+3);
+			AllData[rc] = eachRecode.split(",",0)[columnID];
+		}
+
+		return AllData;
+	}
+
+
+	//指定したカラムが指定したレコードであるRecodeの、指定したColumnのデータだけ取得
+	//	成功したらString[]
+	//	失敗もしくは該当するデータがなかったらnull
+	/*
+		+------+
+		|      |
+		+------+
+
+		+------+
+		|      |
+		+------+
+
+		+------+
+		|      |
+		+------+
+	 */
+	public String[] SelectData(int checkColumnID, String data, int getColumnID){
+
+		int[] matchRecodeID = SelectID(checkColumnID, data);
+
+		if(matchRecodeID != null){
+			String[] selectedData = new String[matchRecodeID.length];
+
+			for(int dc=0; dc<matchRecodeID.length; dc++){
+				selectedData[dc] = SelectData(matchRecodeID[dc], getColumnID);
+			}		
+
+			return selectedData;
+
+		}
+
+		return null;
+	}
+
+
+	//指定したレコードを削除
+	public int Delete(int RecodeID){
+
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		int result = dbfile.DeleteMatchLine(RecodeID+3);
+		return result;
+	}
 
 
 	//指定したレコードの指定したカラムを指定したデータに更新
 	public void Update(int RecodeID, String Column, String Data){
-		//古いデータを取得
-		String OldData = Select(RecodeID);
 
-		//カラム番号を取得
-		int check_column = GetColumnID(Column);
+		EditedFile dbfile = new EditedFile(this.dbfilepath);
+		//古いRecodeの取得
+		String OldData = dbfile.GetMatchLine(RecodeID+3);
 
+		//指定されたカラムのカラムIDを取得
+		int ColumnID = GetColumnID(Column);
 
-		//各カラムでデータをパース
-		String EachOldData[] = OldData.split(",");
-		EachOldData[check_column] = Data;
+		//古いRecodeを各カラム毎にパース
+		String[] eachData = OldData.split(",",0);
 
-		//レコードの文字列を再構成
-		Delete(RecodeID);
-		Insert(EachOldData,RecodeID);
-	}
+		//指定されたカラムのデータを更新
+		eachData[ColumnID] = Data;
 
+		//改めてDBにInsert
+		Insert(eachData);
 
-
-	//指定したレコードを削除
-	public void Delete(int RecodeID){
-	
-		//ID X番がファイル上で何行目なのかを計算
-		int DBFileLineNum = GetDBSize();
-		int RecodeLineNum = GetRecodeNum();
-		int DelLine = DBFileLineNum - RecodeLineNum + RecodeID;
-
-		FileEdit ef = new FileEdit(this.dbname);
-		ef.DelLine(DelLine);
-	
-	
 	}
 
 }
